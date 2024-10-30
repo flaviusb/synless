@@ -1,0 +1,15 @@
+[package]
+name = "synless"
+version = "0.0.0"
+edition = "2021"
+authors = ["Justin (:flaviusb) Marsh <justin.marsh@flaviusb.net>"]
+description = "More or less ometa-ish approach to parsing TokenSteams for Rust proc macros, without going through syn."
+license = "AGPL-3.0"
+readme = "README.md"
+license-file = "LICENSE"
+homepage = "https://github.com/flaviusb/synless"
+repository = "https://github.com/flaviusb/synless"
+
+[lib]
+
+[dependencies]
