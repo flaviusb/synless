@@ -3,7 +3,7 @@ extern crate proc_macro;
 use proc_macro;
 
 // Result, Fail, CompileError, Accumulation
-// Accumulation is fn(R, Vec<Span>, R, Vec<Span>) -> (R, Vec<Span>)
+// Accumulation is fn((R, Vec<Span>), (R, Vec<Span>)) -> (R, Vec<Span>)
 pub enum Ishy<R, F> {
   Res(R, Vec<Span>),
   Fail(F, Span),
@@ -18,19 +18,23 @@ pub enum Socket<Inner> {
   Capture(Key),
   Val(Inner),
 }
-pub enum TT<...> {
+pub enum TT<R, F> {
   Item(Socket<Item>),
   Lit(Socket<Lit>),
   Punct(Socket<Punct>),
   Group(Socket<Group>),
 }
-trait<..> TT<..> {
-  fn item() ->
-  fn lit() ->
+trait TT<R, F> {
+  fn item() -> Self {
+    TT::<R, F>::Item(Socket::Val(Item {}))
+  }
+  fn lit() -> Self {
+    TT::<R, F>::Lit(Socket::Val(Lit {}))
+  }
   fn punct() ->
   fn group() ->
 }
-trait<...> Ish<...> for TT<...> {
+trait<R, F> Ish<R, F> for TT<R, F> {
   fn parse(self, it: IntoIter) -> ;
 }
 pub struct Item;
