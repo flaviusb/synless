@@ -19,36 +19,36 @@ pub enum Socket<Inner> {
   Capture(Box<Key>),
   Val(Inner),
 }
-pub enum TT<R, F> {
+pub enum TT {
   Item(Socket<Item>),
   Lit(Socket<Lit>),
   Punct(Socket<Punct>),
-  Group(Socket<Group<R, F>>),
+  Group(Socket<Group>),
 }
-impl<R, F> TT<R, F> {
+impl TT {
   fn item(it: &str) -> Self {
-    TT::<R, F>::Item(Socket::Val(Item { name: Box::new(*it) }))
+    TT::Item(Socket::Val(Item { name: it.to_string() }))
   }
   fn lit_f32(it: f32) -> Self {
-    TT::<R, F>::Lit(Socket::Val(Lit::Lf32(Socket::Val(it))))
+    TT::Lit(Socket::Val(Lit::Lf32(Socket::Val(it))))
   }
   fn lit_f64(it: f64) -> Self {
-    TT::<R, F>::Lit(Socket::Val(Lit::Lf64(Socket::Val(it))))
+    TT::Lit(Socket::Val(Lit::Lf64(Socket::Val(it))))
   }
   fn punct() -> Self {
-    TT::<R, F>::Punct(Socket::DontCare)
+    TT::Punct(Socket::DontCare)
   }
   fn group() -> Self {
-    TT::<R, F>::Group(Socket::Val(Group::<R, F> { contents: vec!()}))
+    TT::Group(Socket::Val(Group { contents: vec!()}))
   }
 }
-impl<R, F> Ish<R, F> for TT<R, F> {
+impl<R, F> Ish<R, F> for TT {
   fn parse(self, it: IntoIter) -> Ishy<R, F> {
     todo!()
   }
 }
 pub struct Item {
-  pub name: Box<str>,
+  pub name: String,
 }
 pub enum Lit {
   Lf32(Socket<f32>),
@@ -65,6 +65,7 @@ pub enum Lit {
   Li128(Socket<i128>),
   Lchar(Socket<char>),
   Lstr(Socket<Box<str>>),
+  Lunparsed(Socket<Box<str>>),
 }
 pub struct Punct {
   pub spacing: Socket<Spacing>,
@@ -74,8 +75,8 @@ pub enum Spacing {
   Joint,
   Alone,
 }
-pub struct Group<R, F> {
-  pub contents: Vec<TT<R, F>>,
+pub struct Group {
+  pub contents: Vec<TT>,
 }
 
 pub struct Seq<R, F> {
