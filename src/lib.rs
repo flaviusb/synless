@@ -3,7 +3,6 @@ extern crate proc_macro;
 use proc_macro::token_stream::IntoIter;
 use proc_macro::Span;
 
-use std::marker::PhantomData;
 // Result, Fail, CompileError, Accumulation
 // Accumulation is fn((R, Vec<Span>), (R, Vec<Span>)) -> (R, Vec<Span>)
 pub enum Ishy<R, F> {
@@ -21,17 +20,20 @@ pub enum Socket<Inner> {
   Val(Inner),
 }
 pub enum TT<R, F> {
-  Item(Socket<Item<R, F>>),
-  Lit(Socket<Lit<R, F>>),
-  Punct(Socket<Punct<R, F>>),
+  Item(Socket<Item>),
+  Lit(Socket<Lit>),
+  Punct(Socket<Punct>),
   Group(Socket<Group<R, F>>),
 }
 impl<R, F> TT<R, F> {
-  fn item() -> Self {
-    TT::<R, F>::Item(Socket::Val(Item {}))
+  fn item(it: &str) -> Self {
+    TT::<R, F>::Item(Socket::Val(Item { name: Box::new(*it) }))
   }
-  fn lit() -> Self {
-    TT::<R, F>::Lit(Socket::Val(Lit::f()))
+  fn lit_f32(it: f32) -> Self {
+    TT::<R, F>::Lit(Socket::Val(Lit::Lf32(Socket::Val(it))))
+  }
+  fn lit_f64(it: f64) -> Self {
+    TT::<R, F>::Lit(Socket::Val(Lit::Lf64(Socket::Val(it))))
   }
   fn punct() -> Self {
     TT::<R, F>::Punct(Socket::DontCare)
@@ -46,9 +48,23 @@ impl<R, F> Ish<R, F> for TT<R, F> {
   }
 }
 pub struct Item {
+  pub name: Box<str>,
 }
 pub enum Lit {
-  f(),
+  Lf32(Socket<f32>),
+  Lf64(Socket<f64>),
+  Lu8(Socket<u8>),
+  Lu16(Socket<u16>),
+  Lu32(Socket<u32>),
+  Lu64(Socket<u64>),
+  Lu128(Socket<u128>),
+  Li8(Socket<i8>),
+  Li16(Socket<i16>),
+  Li32(Socket<i32>),
+  Li64(Socket<i64>),
+  Li128(Socket<i128>),
+  Lchar(Socket<char>),
+  Lstr(Socket<Box<str>>),
 }
 pub struct Punct {
   pub spacing: Socket<Spacing>,
