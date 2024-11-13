@@ -21,7 +21,7 @@ pub enum Socket<Inner> {
 }
 pub enum TT {
   Item(Socket<Item>),
-  Lit(Socket<Lit>),
+  Lit(Lit),
   Punct(Socket<Punct>),
   Group(Socket<Group>),
 }
@@ -30,10 +30,10 @@ impl TT {
     TT::Item(Socket::Val(Item { name: it.to_string() }))
   }
   fn lit_f32(it: f32) -> Self {
-    TT::Lit(Socket::Val(Lit::Lf32(Socket::Val(it))))
+    TT::Lit(Lit::Lf32(Socket::Val(it)))
   }
   fn lit_f64(it: f64) -> Self {
-    TT::Lit(Socket::Val(Lit::Lf64(Socket::Val(it))))
+    TT::Lit(Lit::Lf64(Socket::Val(it)))
   }
   fn punct() -> Self {
     TT::Punct(Socket::DontCare)
@@ -43,7 +43,21 @@ impl TT {
   }
 }
 impl<R, F> Ish<R, F> for TT {
-  fn parse(self, it: IntoIter) -> Ishy<R, F> {
+  fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
+    match self {
+      TT::Item(socket) => {
+        // check if it is a 
+      },
+      TT::Lit(socket) => {
+        // check if it is a 
+      },
+      TT::Punct(socket) => {
+        // check if it is a 
+      },
+      TT::Group(socket) => {
+        // check if it is a 
+      },
+    }
     todo!()
   }
 }
@@ -67,6 +81,11 @@ pub enum Lit {
   Lstr(Socket<Box<str>>),
   Lunparsed(Socket<Box<str>>),
 }
+impl<R, F> Ish<R, F> for Lit {
+  fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
+    todo!()
+  }
+}
 pub struct Punct {
   pub spacing: Socket<Spacing>,
   pub it: Socket<char>,
@@ -84,7 +103,7 @@ pub struct Seq<R, F> {
   no_match: Option<fn((R, Vec<Span>)) -> (F, Vec<Span>)>,
 }
 impl<R, F> Ish<R, F> for Seq<R, F> {
-  fn parse(self, it: IntoIter) -> Ishy<R, F> {
+  fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
     todo!()
   }
 }
@@ -94,7 +113,7 @@ pub struct Alt<R, F> {
   no_match: Option<fn((R, Vec<Span>)) -> (F, Vec<Span>)>,
 }
 impl<R, F> Ish<R, F> for Alt<R, F> {
-  fn parse(self, it: IntoIter) -> Ishy<R, F> {
+  fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
     todo!()
   }
 }
