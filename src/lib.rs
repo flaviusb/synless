@@ -3,6 +3,7 @@ extern crate proc_macro;
 use proc_macro::token_stream::IntoIter;
 use proc_macro::Span;
 
+use std::marker::PhantomData;
 // Result, Fail, CompileError, Accumulation
 // Accumulation is fn((R, Vec<Span>), (R, Vec<Span>)) -> (R, Vec<Span>)
 pub enum Ishy<R, F> {
@@ -13,10 +14,10 @@ pub enum Ishy<R, F> {
 trait Ish<R, F> {
   fn parse(self, it: IntoIter) -> Ishy<R, F>;
 }
-type Key = &str;
+type Key = str;
 pub enum Socket<Inner> {
   DontCare,
-  Capture(Key),
+  Capture(Box<Key>),
   Val(Inner),
 }
 pub enum TT<R, F> {
@@ -30,13 +31,13 @@ impl<R, F> TT<R, F> {
     TT::<R, F>::Item(Socket::Val(Item {}))
   }
   fn lit() -> Self {
-    TT::<R, F>::Lit(Socket::Val(Lit::<R, F>::f()))
+    TT::<R, F>::Lit(Socket::Val(Lit::f()))
   }
   fn punct() -> Self {
     TT::<R, F>::Punct(Socket::DontCare)
   }
   fn group() -> Self {
-    TT::<R, F>::Group(Socket::Val(Group {}))
+    TT::<R, F>::Group(Socket::Val(Group::<R, F> { contents: vec!()}))
   }
 }
 impl<R, F> Ish<R, F> for TT<R, F> {
@@ -44,11 +45,12 @@ impl<R, F> Ish<R, F> for TT<R, F> {
     todo!()
   }
 }
-pub struct Item<R, F> {}
-pub enum Lit<R, F> {
+pub struct Item {
+}
+pub enum Lit {
   f(),
 }
-pub struct Punct<R, F> {
+pub struct Punct {
   pub spacing: Socket<Spacing>,
   pub it: Socket<char>,
 }
@@ -56,7 +58,9 @@ pub enum Spacing {
   Joint,
   Alone,
 }
-pub struct Group<R, F> {}
+pub struct Group<R, F> {
+  pub contents: Vec<TT<R, F>>,
+}
 
 pub struct Seq<R, F> {
   sequence: Vec<Box<dyn Ish<R, F>>>,
