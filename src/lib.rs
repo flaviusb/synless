@@ -3,6 +3,16 @@ extern crate proc_macro;
 use proc_macro::token_stream::IntoIter;
 use proc_macro::Span;
 
+
+// A couple of approaches
+// #Iterator → various kinds of Visitor
+// #Direct Parse and Parser Combinator (and things like 'capturing', 'mapping' etc nodes, where a parser is a struct or enum with an `impl Ish`, and a combinator is a struct or enum with `impl Ish` that also has one or more members with `impl Ish`
+// need a parser for Socket<impl Ishy>; it lifts out capturing etc from special cases
+// TT etc in the direct mode are parsers that match on type and then visit into the socket
+// Need to reconsider how Lit is factored
+//
+// Direct Parse is the one I'm focussing on first
+
 // Result, Fail, CompileError, Accumulation
 // Accumulation is fn((R, Vec<Span>), (R, Vec<Span>)) -> (R, Vec<Span>)
 pub enum Ishy<R, F> {
@@ -18,6 +28,11 @@ pub enum Socket<Inner> {
   DontCare,
   Capture(Box<Key>),
   Val(Inner),
+}
+impl<R, F, T> Ish<R, F> for Socket<T> where T: Ish<R, F> {
+  fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
+    todo!()
+  }
 }
 pub enum TT {
   Item(Socket<Item>),
