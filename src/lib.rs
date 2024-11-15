@@ -36,7 +36,7 @@ impl<R, F, T> Ish<R, F> for Socket<T> where T: Ish<R, F> {
 }
 pub enum TT {
   Item(Socket<Item>),
-  Lit(Lit),
+  Lit(Socket<Lit>),
   Punct(Socket<Punct>),
   Group(Socket<Group>),
 }
@@ -45,16 +45,16 @@ impl TT {
     TT::Item(Socket::Val(Item { name: it.to_string() }))
   }
   fn lit_f32(it: f32) -> Self {
-    TT::Lit(Lit::Lf32(Socket::Val(it)))
+    TT::Lit(Socket::Val(Lit::Lf32(Socket::Val(it))))
   }
   fn lit_f64(it: f64) -> Self {
-    TT::Lit(Lit::Lf64(Socket::Val(it)))
+    TT::Lit(Socket::Val(Lit::Lf64(Socket::Val(it))))
   }
   fn punct() -> Self {
     TT::Punct(Socket::DontCare)
   }
   fn group() -> Self {
-    TT::Group(Socket::Val(Group { contents: vec!()}))
+    TT::Group(Socket::Val(Group { contents: Socket::Val(vec!()), delimeter: Socket::Val(Delimeter::Parenthesis) }))
   }
 }
 impl<R, F> Ish<R, F> for TT {
@@ -110,7 +110,14 @@ pub enum Spacing {
   Alone,
 }
 pub struct Group {
-  pub contents: Vec<TT>,
+  pub contents: Socket<Vec<TT>>,
+  pub delimeter: Socket<Delimeter>,
+}
+pub enum Delimeter {
+  Parenthesis,
+  Brace,
+  Bracket,
+  None,
 }
 
 pub struct Seq<R, F> {
