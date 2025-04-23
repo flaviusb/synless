@@ -1,9 +1,9 @@
 extern crate proc_macro;
 
 use proc_macro::token_stream::{IntoIter};
-use proc_macro::{Span, Group, Spacing, TokenStream, TokenTree};
+use proc_macro::{Span, Group, Spacing, Delimiter, Punct, TokenStream, TokenTree};
 
-trait Pattern<Accumulator: Clone> {
+pub trait Pattern<Accumulator: Clone> {
   fn run(&self, a: Accumulator, ts: TokenStream) -> (bool, TokenStream, Accumulator);
 }
 
@@ -43,10 +43,80 @@ pub fn transform<Accumulator: Clone, T: Pattern<Accumulator>>(pat: &T, accumulat
   return result_ts;
 }
 
-pub struct Punct<A> {
-  pub which: char,
-  pub spacing: Spacing,
+pub enum S<A: Clone,T> {
+  DontCare,
+  Get(fn(A, T) -> A),
+  Is(T),
+}
+
+pub struct SPunct<A: Clone> {
+  pub which: S<A, char>,
+  pub spacing: S<A, Spacing>,
   pub inner_acc: A,
+}
+
+pub struct SGroup<A: Clone> {
+  pub delimiter: S<A, Delimiter>,
+  pub stream: S<A, TokenStream>,
+  pub inner_acc: A,
+}
+
+impl<A: Clone> Pattern<A> for SPunct<A> {
+  fn run(&self, acc: A, ts: TokenStream) -> (bool, TokenStream, A) {
+    let mut ts_iter = ts.clone().into_iter();
+    match ts_iter.next() {
+      Some(TokenTree::Punct(punct)) => {
+        let mut new_acc = acc.clone();
+        match self.which {
+          S::DontCare => {
+            // Don't need to do anything here
+          },
+          S::Is(x) => {
+            if punct.as_char() != x {
+              return (false, ts, acc);
+            }
+          },
+          S::Get(getter) => {
+            new_acc = getter(new_acc, punct.as_char());
+          },
+        };
+        match self.spacing {
+          S::DontCare => {
+            // Don't need to do anything here
+          },
+          S::Is(x) => {
+            if punct.spacing() != x {
+              return (false, ts, acc);
+            }
+          },
+          S::Get(getter) => {
+            new_acc = getter(new_acc, punct.spacing());
+          },
+        };
+        let mut ts_out = TokenStream::new();
+        ts_out.extend(ts_iter);
+        return (true, ts_out, new_acc);
+      },
+      Some(x) => {
+        return (false, ts, acc);
+      },
+      None => {
+        return (false, TokenStream::new(), acc);
+      },
+    }
+  }
+}
+
+//#[test]
+pub fn test_punct_match() {
+  let dollar_alone = SPunct::<Option<bool>> {
+    which: S::Is('$'),
+    spacing: S::Is(Spacing::Alone),
+    inner_acc: None,
+  };
+  let mut tt = TokenStream::new();
+  tt.extend(TokenStream::from(TokenTree::Punct(Punct::new('$', Spacing::Alone))));
+  let (m, tr, res) = dollar_alone.run(None, tt);
 }
 
 /*
