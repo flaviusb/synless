@@ -1,8 +1,72 @@
 extern crate proc_macro;
 
-use proc_macro::token_stream::IntoIter;
-use proc_macro::Span;
+use proc_macro::token_stream::{IntoIter};
+use proc_macro::{Span, Group, Spacing, TokenStream, TokenTree};
 
+trait Pattern<Accumulator: Clone> {
+  fn run(&self, a: Accumulator, ts: TokenStream) -> (bool, TokenStream, Accumulator);
+}
+
+pub struct MapAcc<A: Clone, B: Clone> {
+  pub it: fn(A) -> B,
+  pub inner_acc: A,
+  pub inner: dyn Pattern<A>,
+}
+
+impl<A: Clone, B: Clone> Pattern<B> for MapAcc<A, B> {
+  fn run(&self, b: B, ts: TokenStream) -> (bool, TokenStream, B) {
+    let (m, t, a) = self.inner.run(self.inner_acc.clone(), ts);
+    return (m, t, (self.it)(a));
+  }
+}
+
+pub fn transform<Accumulator: Clone, T: Pattern<Accumulator>>(pat: &T, accumulator: Accumulator, map_it: fn(Accumulator) -> TokenStream, input_ts: TokenStream) -> TokenStream {
+  let mut result_ts = TokenStream::new();
+  let mut ts = input_ts.into_iter();
+  loop {
+    match ts.next() {
+      Some(TokenTree::Group(grp)) => {
+        result_ts.extend(TokenStream::from(TokenTree::Group(Group::new(grp.delimiter(), transform(pat, accumulator.clone(), map_it, grp.stream())))).into_iter());
+      },
+      Some(it) => {
+        let it_ts = TokenStream::from(it.clone());
+        if let (true, ts_new, acc_new) = pat.run(accumulator.clone(), it_ts.clone()) {
+          result_ts.extend(map_it(acc_new));
+          ts = ts_new.into_iter();
+        } else {
+          result_ts.extend(it_ts.into_iter());
+        }
+      },
+      None => break,
+    };
+  }
+  return result_ts;
+}
+
+pub struct Punct<A> {
+  pub which: char,
+  pub spacing: Spacing,
+  pub inner_acc: A,
+}
+
+/*
+
+trait Parse
+trait Answer
+
+
+let foo = Seq { seq: vec!( Alt { options: vec!{ Lit::unparsed("0"), Lit::unparsed("1"),  } } ) };
+let foo = seq([alt([u("0"), u("1")])])
+Star
+Plus
+Questionmark
+
+
+let out = foo.parse(the_input);
+
+fn's as members for Map {}, Filter {}, ...
+
+*/
 
 // A couple of approaches
 // #Iterator → various kinds of Visitor
@@ -15,13 +79,17 @@ use proc_macro::Span;
 
 // Result, Fail, CompileError, Accumulation
 // Accumulation is fn((R, Vec<Span>), (R, Vec<Span>)) -> (R, Vec<Span>)
+
+/*
 pub enum Ishy<R, F> {
   Res(R, Vec<Span>),
-  Fail(F, Span),
-  CompileError(F, Span),
+  Fail(F, Option<Span>),
+  CompileError(F, Option<Span>),
 }
-trait Ish<R, F> {
-  fn parse(self, it: IntoIter) -> Ishy<R, F>;
+trait Ish {
+  type ResultType;
+  type FailType;
+  fn parse(self, it: IntoIter) -> Ishy<self::ResultType, self::FailType>;
 }
 type Key = str;
 pub enum Socket<Inner> {
@@ -29,9 +97,27 @@ pub enum Socket<Inner> {
   Capture(Box<Key>),
   Val(Inner),
 }
-impl<R, F, T> Ish<R, F> for Socket<T> where T: Ish<R, F> {
-  fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
-    todo!()
+pub enum SocketFailure {
+  Eh,
+  EOS,
+  NoMatch,
+}
+pub enum SocketSuccess<T> {
+  Eh,
+  KV(Box<Key>, T),
+}
+
+impl<T: Ish> Ish<SocketSuccess<T>, SocketFailure> for Socket<T> {
+  fn parse(self, mut it: IntoIter) -> Ishy<SocketSuccess<T>, SocketFailure> {
+    if let Some(res) = it.next() {
+      match self {
+        Socket::DontCare     => return Ishy::Res(SocketSuccess::Eh, vec!(res.span())),
+        Socket::Val(inner)   => todo!(), //if inner == res { return Ishy::Res(SocketSuccess::Eh, res.span()) } else { return Ishy::Fail(SocketFailure::NoMatch, it.span()) },
+        Socket::Capture(key) => todo!(),
+      }
+    } else {
+      return Ishy::Fail(SocketFailure::EOS, None);
+    }
   }
 }
 pub enum TT {
@@ -57,7 +143,9 @@ impl TT {
     TT::Group(Socket::Val(Group { contents: Socket::Val(vec!()), delimeter: Socket::Val(Delimeter::Parenthesis) }))
   }
 }
-impl<R, F> Ish<R, F> for TT {
+impl<R, F> Ish for TT {
+  type ResultType = R;
+  type FailType = F;
   fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
     match self {
       TT::Item(socket) => {
@@ -96,7 +184,9 @@ pub enum Lit {
   Lstr(Socket<Box<str>>),
   Lunparsed(Socket<Box<str>>),
 }
-impl<R, F> Ish<R, F> for Lit {
+impl<R, F> Ish for Lit {
+  type ResultType = R;
+  type FailType = F;
   fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
     todo!()
   }
@@ -124,7 +214,9 @@ pub struct Seq<R, F> {
   sequence: Vec<Box<dyn Ish<R, F>>>,
   no_match: Option<fn((R, Vec<Span>)) -> (F, Vec<Span>)>,
 }
-impl<R, F> Ish<R, F> for Seq<R, F> {
+impl<R, F> Ish for Seq<R, F> {
+  type ResultType = R;
+  type FailType = F;
   fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
     todo!()
   }
@@ -134,7 +226,9 @@ pub struct Alt<R, F> {
   sequence: Vec<Box<dyn Ish<R, F>>>,
   no_match: Option<fn((R, Vec<Span>)) -> (F, Vec<Span>)>,
 }
-impl<R, F> Ish<R, F> for Alt<R, F> {
+impl<R, F> Ish for Alt<R, F> {
+  type ResultType = R;
+  type FailType = F;
   fn parse(self, mut it: IntoIter) -> Ishy<R, F> {
     todo!()
   }
@@ -151,4 +245,13 @@ Maybe
 TT
 TTQ
 Map
+*/
+
+
+/*
+
+  IntoIter next
+
+*/
+
 */
