@@ -114,9 +114,36 @@ pub fn test_punct_match() {
     spacing: S::Is(Spacing::Alone),
     inner_acc: None,
   };
+  let dollar_meh = SPunct::<Option<bool>> {
+    which: S::Is('$'),
+    spacing: S::DontCare,
+    inner_acc: None,
+  };
+  #[derive(Clone)]
+  struct dollar_acc {
+    joined: bool,
+    amount: u8,
+  }
+  fn dollar_getter(acc: dollar_acc, sp: Spacing) -> dollar_acc {
+    match sp {
+      Spacing::Joint => {
+        dollar_acc { joined: true,  amount: acc.amount + 1, }
+      },
+      Spacing::Alone => {
+        dollar_acc { joined: false, amount: acc.amount, }
+      }
+    }
+  }
+  let dollar_get = SPunct::<dollar_acc> {
+    which: S::Is('$'),
+    spacing: S::Get(dollar_getter),
+    inner_acc: dollar_acc { joined: false, amount: 0, },
+  };
   let mut tt = TokenStream::new();
   tt.extend(TokenStream::from(TokenTree::Punct(Punct::new('$', Spacing::Alone))));
-  let (m, tr, res) = dollar_alone.run(None, tt);
+  let (m1, tr1, res1) = dollar_alone.run(None, tt.clone());
+  let (m2, tr2, res2) = dollar_meh.run(None, tt.clone());
+  let (m3, tr3, res3) = dollar_get.run(dollar_acc { joined: false, amount: 0 }, tt.clone());
 }
 
 /*
