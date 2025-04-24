@@ -43,7 +43,8 @@ pub fn transform<Accumulator: Clone, T: Pattern<Accumulator>>(pat: &T, accumulat
   return result_ts;
 }
 
-pub enum S<A: Clone,T> {
+#[derive(Clone)]
+pub enum S<A: Clone, T: Clone> {
   DontCare,
   Get(fn(A, T) -> A),
   Is(T),
@@ -51,6 +52,44 @@ pub enum S<A: Clone,T> {
   MatchIs(T, fn(T) -> bool),
   MatchGet(fn(T) -> bool, fn(A, T) -> A),
 }
+
+
+macro_rules! s_inner {
+  ($matchon:expr, $val:expr, $ts:expr, $acc:expr, $new_acc:expr) => {
+      match $matchon {
+        S::DontCare => {
+          // Don't need to do anything here
+        },
+        S::Is(x) => {
+          if $val != x {
+            return (false, $ts, $acc);
+          }
+        },
+        S::Get(getter) => {
+          $new_acc = getter($new_acc, $val);
+        },
+        S::Match(check) => {
+          if !check($val) {
+            return (false, $ts, $acc);
+          }
+        },
+        S::MatchIs(x, check) => {
+          if ($val != x) || (!check($val))  {
+            return (false, $ts, $acc);
+          }
+        },
+        S::MatchGet(check, getter) => {
+          if check($val) {
+            $new_acc = getter($new_acc, $val);
+          } else {
+            return (false, $ts, $acc);
+          }
+        },
+      };
+  }
+}
+
+
 
 pub struct SPunct<A: Clone> {
   pub which: S<A, char>,
@@ -65,14 +104,30 @@ pub struct SGroup<A: Clone> {
 }
 
 pub struct SIdent<A: Clone> {
-  pub string: String,
+  pub string: S<A, String>,
   pub inner_acc: A,
 }
 
 pub enum SLiteral<A: Clone> {
   //Uninterp(A, S<A, Literal>),
-  U8(A, S<A, u8>),
-  U16(A, S<A, u16>),
+  U8(A,    S<A, u8>),
+  U16(A,   S<A, u16>),
+  U32(A,   S<A, u32>),
+  U64(A,   S<A, u64>),
+  U128(A,  S<A, u128>),
+  I8(A,    S<A, i8>),
+  I16(A,   S<A, i16>),
+  I32(A,   S<A, i32>),
+  I64(A,   S<A, i64>),
+  I128(A,  S<A, i128>),
+  F32(A,   S<A, f32>),
+  F64(A,   S<A, f64>),
+  Usize(A, S<A, usize>),
+  Isize(A, S<A, isize>),
+  Char(A,  S<A, char>),
+  RString(A, S<A, String>),
+  //BString(A, S<A, &[u8]>),
+  CString(A, S<A, std::ffi::CString>),
 }
 
 impl<A: Clone> Pattern<A> for SPunct<A> {
@@ -81,66 +136,29 @@ impl<A: Clone> Pattern<A> for SPunct<A> {
     match ts_iter.next() {
       Some(TokenTree::Punct(punct)) => {
         let mut new_acc = acc.clone();
-        match self.which {
-          S::DontCare => {
-            // Don't need to do anything here
-          },
-          S::Is(x) => {
-            if punct.as_char() != x {
-              return (false, ts, acc);
-            }
-          },
-          S::Get(getter) => {
-            new_acc = getter(new_acc, punct.as_char());
-          },
-          S::Match(check) => {
-            if !check(punct.as_char()) {
-              return (false, ts, acc);
-            }
-          },
-          S::MatchIs(x, check) => {
-            if (punct.as_char() != x) || (!check(punct.as_char()))  {
-              return (false, ts, acc);
-            }
-          },
-          S::MatchGet(check, getter) => {
-            if check(punct.as_char()) {
-              new_acc = getter(new_acc, punct.as_char());
-            } else {
-              return (false, ts, acc);
-            }
-          },
-        };
-        match self.spacing {
-          S::DontCare => {
-            // Don't need to do anything here
-          },
-          S::Is(x) => {
-            if punct.spacing() != x {
-              return (false, ts, acc);
-            }
-          },
-          S::Get(getter) => {
-            new_acc = getter(new_acc, punct.spacing());
-          },
-          S::Match(check) => {
-            if !check(punct.spacing()) {
-              return (false, ts, acc);
-            }
-          },
-          S::MatchIs(x, check) => {
-            if (punct.spacing() != x) || (!check(punct.spacing()))  {
-              return (false, ts, acc);
-            }
-          },
-          S::MatchGet(check, getter) => {
-            if check(punct.spacing()) {
-              new_acc = getter(new_acc, punct.spacing());
-            } else {
-              return (false, ts, acc);
-            }
-          },
-        };
+        s_inner!(self.which,   punct.as_char(), ts, acc, new_acc);
+        s_inner!(self.spacing, punct.spacing(), ts, acc, new_acc);
+        let mut ts_out = TokenStream::new();
+        ts_out.extend(ts_iter);
+        return (true, ts_out, new_acc);
+      },
+      Some(x) => {
+        return (false, ts, acc);
+      },
+      None => {
+        return (false, TokenStream::new(), acc);
+      },
+    }
+  }
+}
+
+impl<A: Clone> Pattern<A> for SIdent<A> {
+  fn run(&self, acc: A, ts: TokenStream) -> (bool, TokenStream, A) {
+    let mut ts_iter = ts.clone().into_iter();
+    match ts_iter.next() {
+      Some(TokenTree::Ident(ident)) => {
+        let mut new_acc = acc.clone();
+        s_inner!(self.string.clone(), ident.to_string(), ts, acc, new_acc);
         let mut ts_out = TokenStream::new();
         ts_out.extend(ts_iter);
         return (true, ts_out, new_acc);
