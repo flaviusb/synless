@@ -47,6 +47,9 @@ pub enum S<A: Clone,T> {
   DontCare,
   Get(fn(A, T) -> A),
   Is(T),
+  Match(fn(T) -> bool),
+  MatchIs(T, fn(T) -> bool),
+  MatchGet(fn(T) -> bool, fn(A, T) -> A),
 }
 
 pub struct SPunct<A: Clone> {
@@ -59,6 +62,17 @@ pub struct SGroup<A: Clone> {
   pub delimiter: S<A, Delimiter>,
   pub stream: S<A, TokenStream>,
   pub inner_acc: A,
+}
+
+pub struct SIdent<A: Clone> {
+  pub string: String,
+  pub inner_acc: A,
+}
+
+pub enum SLiteral<A: Clone> {
+  //Uninterp(A, S<A, Literal>),
+  U8(A, S<A, u8>),
+  U16(A, S<A, u16>),
 }
 
 impl<A: Clone> Pattern<A> for SPunct<A> {
@@ -79,6 +93,23 @@ impl<A: Clone> Pattern<A> for SPunct<A> {
           S::Get(getter) => {
             new_acc = getter(new_acc, punct.as_char());
           },
+          S::Match(check) => {
+            if !check(punct.as_char()) {
+              return (false, ts, acc);
+            }
+          },
+          S::MatchIs(x, check) => {
+            if (punct.as_char() != x) || (!check(punct.as_char()))  {
+              return (false, ts, acc);
+            }
+          },
+          S::MatchGet(check, getter) => {
+            if check(punct.as_char()) {
+              new_acc = getter(new_acc, punct.as_char());
+            } else {
+              return (false, ts, acc);
+            }
+          },
         };
         match self.spacing {
           S::DontCare => {
@@ -91,6 +122,23 @@ impl<A: Clone> Pattern<A> for SPunct<A> {
           },
           S::Get(getter) => {
             new_acc = getter(new_acc, punct.spacing());
+          },
+          S::Match(check) => {
+            if !check(punct.spacing()) {
+              return (false, ts, acc);
+            }
+          },
+          S::MatchIs(x, check) => {
+            if (punct.spacing() != x) || (!check(punct.spacing()))  {
+              return (false, ts, acc);
+            }
+          },
+          S::MatchGet(check, getter) => {
+            if check(punct.spacing()) {
+              new_acc = getter(new_acc, punct.spacing());
+            } else {
+              return (false, ts, acc);
+            }
           },
         };
         let mut ts_out = TokenStream::new();
