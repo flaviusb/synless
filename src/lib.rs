@@ -2,6 +2,7 @@ extern crate proc_macro;
 
 use proc_macro::token_stream::{IntoIter};
 use proc_macro::{Span, Group, Spacing, Delimiter, Punct, TokenStream, TokenTree};
+use std::str::FromStr;
 
 pub trait Pattern<Accumulator: Clone> {
   fn run(&self, a: Accumulator, ts: TokenStream) -> (bool, TokenStream, Accumulator);
@@ -90,24 +91,27 @@ macro_rules! s_inner {
 }
 
 
-
+#[derive(Clone)]
 pub struct SPunct<A: Clone> {
   pub which: S<A, char>,
   pub spacing: S<A, Spacing>,
   pub inner_acc: A,
 }
 
-pub struct SGroup<A: Clone> {
+#[derive(Clone)]
+pub struct SGroup<'a, A: Clone> {
   pub delimiter: S<A, Delimiter>,
-  pub stream: S<A, TokenStream>,
+  pub internal: S<A, &'a [&'a dyn Pattern<A>]>,
   pub inner_acc: A,
 }
 
+#[derive(Clone)]
 pub struct SIdent<A: Clone> {
   pub string: S<A, String>,
   pub inner_acc: A,
 }
 
+#[derive(Clone)]
 pub enum SLiteral<A: Clone> {
   //Uninterp(A, S<A, Literal>),
   U8(A,    S<A, u8>),
@@ -173,6 +177,51 @@ impl<A: Clone> Pattern<A> for SIdent<A> {
   }
 }
 
+impl<A: Clone> Pattern<A> for SLiteral<A> {
+  fn run(&self, acc: A, ts: TokenStream) -> (bool, TokenStream, A) {
+    let mut ts_iter = ts.clone().into_iter();
+    match ts_iter.next() {
+      Some(TokenTree::Literal(lit)) => {
+        let mut new_acc = acc.clone();
+        //s_inner!(self.string.clone(), ident.to_string(), ts, acc, new_acc);
+        match self {
+          SLiteral::U8(a, b) => {
+            if let Ok(it) = u8::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::U16(a, b) => {
+            if let Ok(it) = u16::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::U32(a, b) => {
+            if let Ok(it) = u32::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          _ => {},
+        };
+        let mut ts_out = TokenStream::new();
+        ts_out.extend(ts_iter);
+        return (true, ts_out, new_acc);
+      },
+      Some(x) => {
+        return (false, ts, acc);
+      },
+      None => {
+        return (false, TokenStream::new(), acc);
+      },
+    }
+  }
+}
+ 
 //#[test]
 pub fn test_punct_match() {
   let dollar_alone = SPunct::<Option<bool>> {
