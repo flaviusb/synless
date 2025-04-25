@@ -1,8 +1,9 @@
 extern crate proc_macro;
 
 use proc_macro::token_stream::{IntoIter};
-use proc_macro::{Span, Group, Spacing, Delimiter, Punct, TokenStream, TokenTree};
+use proc_macro::{Span, Group, Spacing, Delimiter, Punct, TokenStream, TokenTree, Literal};
 use std::str::FromStr;
+use std::rc::Rc;
 
 pub trait Pattern<Accumulator: Clone> {
   fn run(&self, a: Accumulator, ts: TokenStream) -> (bool, TokenStream, Accumulator);
@@ -18,6 +19,29 @@ impl<A: Clone, B: Clone> Pattern<B> for MapAcc<A, B> {
   fn run(&self, b: B, ts: TokenStream) -> (bool, TokenStream, B) {
     let (m, t, a) = self.inner.run(self.inner_acc.clone(), ts);
     return (m, t, (self.it)(a));
+  }
+}
+
+#[derive(Clone)]
+pub struct Seq<A: Clone> {
+  pub seq: Rc<Vec<Box<dyn Pattern<A>>>>,
+  pub inner_acc: A,
+}
+
+impl <A: Clone> Pattern<A> for Seq<A> {
+  fn run(&self, acc: A, ts: TokenStream) -> (bool, TokenStream, A) {
+    let mut inner_acc = acc.clone();
+    let mut inner_ts = ts.clone();
+    let seq_ref = &self.seq.clone();
+    for i in seq_ref.iter() {
+      if let (true, temp_ts, temp_acc) = i.run(inner_acc, inner_ts) {
+        inner_ts = temp_ts;
+        inner_acc = temp_acc;
+      } else {
+        return (false, ts, acc);
+      }
+    };
+    return (true, inner_ts, inner_acc);
   }
 }
 
@@ -99,9 +123,9 @@ pub struct SPunct<A: Clone> {
 }
 
 #[derive(Clone)]
-pub struct SGroup<'a, A: Clone> {
+pub struct SGroup<A: Clone> {
   pub delimiter: S<A, Delimiter>,
-  pub internal: S<A, &'a [&'a dyn Pattern<A>]>,
+  pub internal: S<A, Seq<A>>,
   pub inner_acc: A,
 }
 
@@ -206,6 +230,55 @@ impl<A: Clone> Pattern<A> for SLiteral<A> {
               return (false, ts, acc);
             }
           },
+          SLiteral::U64(a, b) => {
+            if let Ok(it) = u64::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::U128(a, b) => {
+            if let Ok(it) = u128::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::I8(a, b) => {
+            if let Ok(it) = i8::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::I16(a, b) => {
+            if let Ok(it) = i16::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::I32(a, b) => {
+            if let Ok(it) = i32::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::I64(a, b) => {
+            if let Ok(it) = i64::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          SLiteral::I128(a, b) => {
+            if let Ok(it) = i128::from_str(lit.to_string().as_str()) {
+              s_inner!(b.clone(), it, ts, acc, new_acc);
+            } else {
+              return (false, ts, acc);
+            }
+          },
           _ => {},
         };
         let mut ts_out = TokenStream::new();
@@ -259,6 +332,25 @@ pub fn test_punct_match() {
   let (m1, tr1, res1) = dollar_alone.run(None, tt.clone());
   let (m2, tr2, res2) = dollar_meh.run(None, tt.clone());
   let (m3, tr3, res3) = dollar_get.run(dollar_acc { joined: false, amount: 0 }, tt.clone());
+  #[derive(Clone)]
+  struct dollar_num_acc {
+    var: u32,
+  }
+  let dollar_meh2 = SPunct {
+    which: S::Is('$'),
+    spacing: S::DontCare,
+    inner_acc: dollar_num_acc { var: 0 },
+  };
+  fn number_getter(acc: dollar_num_acc, num: u32) -> dollar_num_acc {
+    dollar_num_acc { var: num }
+  }
+  let num_it = SLiteral::U32(dollar_num_acc { var: 0 }, S::Get(number_getter));
+  let dollar_num = Seq { seq: Rc::new(vec!(Box::new(dollar_meh2), Box::new(num_it))), inner_acc: dollar_num_acc { var: 0 }, };
+  let mut tt2 = TokenStream::new();
+  tt2.extend(TokenStream::from(TokenTree::Punct(Punct::new('$', Spacing::Alone))));
+  tt2.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(7))));
+  let (m4, tr4, res4) = dollar_num.run(dollar_num_acc { var: 0 }, tt2);
+  assert_eq!(res4.var, 7);
 }
 
 /*
