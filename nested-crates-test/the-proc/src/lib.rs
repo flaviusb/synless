@@ -2,7 +2,7 @@ extern crate synless;
 extern crate proc_macro;
 
 use synless::*;
-use proc_macro::{TokenStream, TokenTree, Punct, Literal, Spacing, Delimiter};
+use proc_macro::{TokenStream, TokenTree, Punct, Literal, Spacing, Delimiter, Group, Span, Ident};
 use std::rc::Rc;
 
 
@@ -68,10 +68,25 @@ pub fn dollar_increment(t: TokenStream) -> TokenStream {
     return tt3;
   } else {
     // should be compile error here
-    return t;
+    let span = if let Some(s) = t.into_iter().next() {
+      s.span()
+    } else {
+      Span::call_site()
+    };
+    return compile_error("problem", span);
   }
   
   let mut tt3 = TokenStream::new();
   tt3.extend(TokenStream::from(TokenTree::Literal(Literal::u8_unsuffixed(res3.amount))));
   tt3
+}
+
+fn compile_error(msg: &str, span: Span) -> TokenStream {
+  let mut inner = TokenStream::new();
+  inner.extend(TokenStream::from(TokenTree::Literal(Literal::string(msg))));
+  let mut f = TokenStream::new();
+  f.extend(TokenStream::from(TokenTree::Ident(Ident::new("compile_error", span))));
+  f.extend(TokenStream::from(TokenTree::Punct(Punct::new('!', Spacing::Joint))));
+  f.extend(TokenStream::from(TokenTree::Group(Group::new(Delimiter::Brace, inner))));
+  f
 }
