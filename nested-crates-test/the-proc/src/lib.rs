@@ -62,5 +62,16 @@ pub fn dollar_increment(t: TokenStream) -> TokenStream {
   tt2.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(7))));
   let (m4, tr4, res4) = dollar_num.run(dollar_num_acc { var: 0 }, tt2);
   assert_eq!(res4.var, 7);
-  t
+  if let (true, _, out_data) = dollar_num.run(dollar_num_acc { var: 0 }, tt.clone()) {
+    let mut tt3 = TokenStream::new();
+    tt3.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(out_data.var))));
+    return tt3;
+  } else {
+    // should be compile error here
+    return t;
+  }
+  
+  let mut tt3 = TokenStream::new();
+  tt3.extend(TokenStream::from(TokenTree::Literal(Literal::u8_unsuffixed(res3.amount))));
+  tt3
 }
