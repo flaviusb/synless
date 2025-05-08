@@ -62,23 +62,26 @@ pub fn dollar_increment(t: TokenStream) -> TokenStream {
   tt2.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(7))));
   let (m4, tr4, res4) = dollar_num.run(dollar_num_acc { var: 0 }, tt2);
   assert_eq!(res4.var, 7);
-  if let (true, _, out_data) = dollar_num.run(dollar_num_acc { var: 0 }, tt.clone()) {
-    let mut tt3 = TokenStream::new();
-    tt3.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(out_data.var))));
-    return tt3;
-  } else {
-    // should be compile error here
-    let span = if let Some(s) = t.into_iter().next() {
-      s.span()
-    } else {
-      Span::call_site()
-    };
-    return compile_error("problem", span);
+  match dollar_num.run(dollar_num_acc { var: 0 }, tt.clone()) {
+    (true, _, out_data) => {
+      let mut tt3 = TokenStream::new();
+      tt3.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(out_data.var))));
+      return tt3;
+    },
+    (false, x, _) => {
+      let span = if let Some(s) = t.into_iter().next() {
+        s.span()
+      } else {
+        Span::call_site()
+      };
+      let mut out_inner = TokenStream::new();
+      out_inner.extend(x);
+      out_inner.extend(compile_error("problem", span));
+      let mut out = TokenStream::new();
+      out.extend(TokenStream::from(TokenTree::Group(Group::new(Delimiter::Brace, out_inner))));
+      return out;
+    },
   }
-  
-  let mut tt3 = TokenStream::new();
-  tt3.extend(TokenStream::from(TokenTree::Literal(Literal::u8_unsuffixed(res3.amount))));
-  tt3
 }
 
 fn compile_error(msg: &str, span: Span) -> TokenStream {

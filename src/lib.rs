@@ -1,9 +1,11 @@
 extern crate proc_macro;
 
 use proc_macro::token_stream::{IntoIter};
-use proc_macro::{Span, Group, Spacing, Delimiter, Punct, TokenStream, TokenTree, Literal};
+use proc_macro::{Span, Group, Spacing, Delimiter, Punct, TokenStream, TokenTree, Literal, Ident};
 use std::str::FromStr;
 use std::rc::Rc;
+use std::fmt::format;
+
 
 pub trait Pattern<Accumulator: Clone> {
   fn run(&self, a: Accumulator, ts: TokenStream) -> (bool, TokenStream, Accumulator);
@@ -34,12 +36,15 @@ impl <A: Clone> Pattern<A> for Seq<A> {
     let mut inner_ts = ts.clone();
     let seq_ref = &self.seq.clone();
     for i in seq_ref.iter() {
-      if let (true, temp_ts, temp_acc) = i.run(inner_acc, inner_ts) {
-        inner_ts = temp_ts;
-        inner_acc = temp_acc;
-      } else {
-        return (false, ts, acc);
-      }
+      match i.run(inner_acc, inner_ts) {
+        (true, temp_ts, temp_acc) => {
+          inner_ts = temp_ts;
+          inner_acc = temp_acc;
+        },
+        (false, error_ts, error_acc) => {
+          return (false, error_ts, error_acc);
+        },
+      };
     };
     return (true, inner_ts, inner_acc);
   }
@@ -80,14 +85,16 @@ pub enum S<A: Clone, T: Clone> {
 
 
 macro_rules! s_inner {
-  ($matchon:expr, $val:expr, $ts:expr, $acc:expr, $new_acc:expr) => {
+  ($matchon:expr, $val:expr, $ts:expr, $acc:expr, $new_acc:expr, $loc:expr) => {
       match $matchon {
         S::DontCare => {
           // Don't need to do anything here
         },
         S::Is(x) => {
           if $val != x {
-            return (false, $ts, $acc);
+            let it = $val;
+            let out = format!("Expected {:?}, got {:?}.", x, it);
+            return (false, compile_error(&out, $loc), $acc);
           }
         },
         S::Get(getter) => {
@@ -95,19 +102,19 @@ macro_rules! s_inner {
         },
         S::Match(check) => {
           if !check($val) {
-            return (false, $ts, $acc);
+            return (false, compile_error("Did not match.", $loc), $acc);
           }
         },
         S::MatchIs(x, check) => {
           if ($val != x) || (!check($val))  {
-            return (false, $ts, $acc);
+            return (false, compile_error("Did not match.", $loc), $acc);
           }
         },
         S::MatchGet(check, getter) => {
           if check($val) {
             $new_acc = getter($new_acc, $val);
           } else {
-            return (false, $ts, $acc);
+            return (false, compile_error("Did not match.", $loc), $acc);
           }
         },
       };
@@ -164,8 +171,56 @@ impl<A: Clone> Pattern<A> for SPunct<A> {
     match ts_iter.next() {
       Some(TokenTree::Punct(punct)) => {
         let mut new_acc = acc.clone();
-        s_inner!(self.which,   punct.as_char(), ts, acc, new_acc);
-        s_inner!(self.spacing, punct.spacing(), ts, acc, new_acc);
+        let loc = punct.span();
+        s_inner!(self.which,   punct.as_char(), ts, acc, new_acc, loc);
+        s_inner!(self.spacing, punct.spacing(), ts, acc, new_acc, loc);
+        let mut ts_out = TokenStream::new();
+        ts_out.extend(ts_iter);
+        return (true, ts_out, new_acc);
+      },
+      Some(x) => {
+        let out = format!("Expected punctuation, got {}.", x);
+        return (false, compile_error(&out, x.span()), acc);
+      },
+      None => {
+        return (false, compile_error("Expected punctuation, got nothing.", Span::call_site()), acc);
+      },
+    }
+  }
+}
+
+/*
+impl<A: Clone> Pattern<A> for SGroup<A> {
+  fn run(&self, acc: A, ts: TokenStream) -> (bool, TokenStream, A) {
+    let mut ts_iter = ts.clone().into_iter();
+    match ts_iter.next() {
+      Some(TokenTree::Group(grp)) => {
+        let mut new_acc = acc.clone();
+        s_inner!(self.delimiter, grp.delimiter(), ts, acc, new_acc);
+        match &self.internal {
+          S::DontCare => {},
+          S::Is(seq) => {
+            if let (true, ts_2, newer_acc) = seq.run(new_acc, grp.stream()) {
+              new_acc = newer_acc;
+            } else {
+              return (false, ts, acc);
+            }
+          },
+          S::Get(getter) => {
+            new_acc = getter(new_acc, grp.stream());
+          },
+          S::Match(check) => {
+            if !check(grp.stream()) {
+              return (false, ts, acc);
+            }
+          },
+          S::MatchIs(seq, check) => {
+            todo!();
+          },
+          S::MatchGet(check, getter) => {
+            todo!();
+          },
+        };
         let mut ts_out = TokenStream::new();
         ts_out.extend(ts_iter);
         return (true, ts_out, new_acc);
@@ -179,6 +234,7 @@ impl<A: Clone> Pattern<A> for SPunct<A> {
     }
   }
 }
+*/
 
 impl<A: Clone> Pattern<A> for SIdent<A> {
   fn run(&self, acc: A, ts: TokenStream) -> (bool, TokenStream, A) {
@@ -186,16 +242,18 @@ impl<A: Clone> Pattern<A> for SIdent<A> {
     match ts_iter.next() {
       Some(TokenTree::Ident(ident)) => {
         let mut new_acc = acc.clone();
-        s_inner!(self.string.clone(), ident.to_string(), ts, acc, new_acc);
+        let loc = ident.span();
+        s_inner!(self.string.clone(), ident.to_string(), ts, acc, new_acc, loc);
         let mut ts_out = TokenStream::new();
         ts_out.extend(ts_iter);
         return (true, ts_out, new_acc);
       },
       Some(x) => {
-        return (false, ts, acc);
+        let out = format!("Expected identifier, got {}.", x);
+        return (false, compile_error(&out, x.span()), acc);
       },
       None => {
-        return (false, TokenStream::new(), acc);
+        return (false, compile_error("Expected identifier, got nothing.", Span::call_site()), acc);
       },
     }
   }
@@ -207,74 +265,75 @@ impl<A: Clone> Pattern<A> for SLiteral<A> {
     match ts_iter.next() {
       Some(TokenTree::Literal(lit)) => {
         let mut new_acc = acc.clone();
+        let loc = lit.span();
         //s_inner!(self.string.clone(), ident.to_string(), ts, acc, new_acc);
         match self {
           SLiteral::U8(a, b) => {
             if let Ok(it) = u8::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
-              return (false, ts, acc);
+              return (false, compile_error(&format!("Expected u8, got {}", lit.to_string()), lit.span()), acc);
             }
           },
           SLiteral::U16(a, b) => {
             if let Ok(it) = u16::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
-              return (false, ts, acc);
+              return (false, compile_error(&format!("Expected u16, got {}", lit.to_string()), lit.span()), acc);
             }
           },
           SLiteral::U32(a, b) => {
             if let Ok(it) = u32::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
-              return (false, ts, acc);
+              return (false, compile_error(&format!("Expected u32, got {}", lit.to_string()), lit.span()), acc);
             }
           },
           SLiteral::U64(a, b) => {
             if let Ok(it) = u64::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
-              return (false, ts, acc);
+              return (false, compile_error(&format!("Expected u64, got {}", lit.to_string()), lit.span()), acc);
             }
           },
           SLiteral::U128(a, b) => {
             if let Ok(it) = u128::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
               return (false, ts, acc);
             }
           },
           SLiteral::I8(a, b) => {
             if let Ok(it) = i8::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
               return (false, ts, acc);
             }
           },
           SLiteral::I16(a, b) => {
             if let Ok(it) = i16::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
               return (false, ts, acc);
             }
           },
           SLiteral::I32(a, b) => {
             if let Ok(it) = i32::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
               return (false, ts, acc);
             }
           },
           SLiteral::I64(a, b) => {
             if let Ok(it) = i64::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
               return (false, ts, acc);
             }
           },
           SLiteral::I128(a, b) => {
             if let Ok(it) = i128::from_str(lit.to_string().as_str()) {
-              s_inner!(b.clone(), it, ts, acc, new_acc);
+              s_inner!(b.clone(), it, ts, acc, new_acc, loc);
             } else {
               return (false, ts, acc);
             }
@@ -286,7 +345,7 @@ impl<A: Clone> Pattern<A> for SLiteral<A> {
         return (true, ts_out, new_acc);
       },
       Some(x) => {
-        return (false, ts, acc);
+        return (false, compile_error(&format!("Expected literal, got {}", x), x.span()), acc);
       },
       None => {
         return (false, TokenStream::new(), acc);
@@ -351,6 +410,23 @@ pub fn test_punct_match() {
   tt2.extend(TokenStream::from(TokenTree::Literal(Literal::u32_unsuffixed(7))));
   let (m4, tr4, res4) = dollar_num.run(dollar_num_acc { var: 0 }, tt2);
   assert_eq!(res4.var, 7);
+}
+
+fn compile_error(msg: &str, span: Span) -> TokenStream {
+  let mut inner = TokenStream::new();
+  inner.extend(TokenStream::from(TokenTree::Literal(Literal::string(msg))));
+  let mut f = TokenStream::new();
+  let mut a = TokenTree::Ident(Ident::new("compile_error", span));
+  a.set_span(span);
+  f.extend(TokenStream::from(a));
+  let mut b = TokenTree::Punct(Punct::new('!', Spacing::Joint));
+  b.set_span(span);
+  f.extend(TokenStream::from(b));
+  let mut c = TokenTree::Group(Group::new(Delimiter::Brace, inner));
+  c.set_span(span);
+  f.extend(TokenStream::from(c));
+  f.extend(TokenStream::from(TokenTree::Punct(Punct::new(';', Spacing::Joint))));
+  f
 }
 
 /*

@@ -12,6 +12,7 @@ pub fn test_dollar() {
   let y = dollar_increment!($ 2);
   assert_eq!(x, 1);
   assert_eq!(y, 2);
+  //let z = dollar_increment!($ $);
 }
 
 
