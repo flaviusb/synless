@@ -11,3 +11,10 @@ There is a `transformation` function that uses these same datastructures to recu
 ## Testing
 
 Due to some complications with testing functions that manipulate TokenStreams that need to be exported as functions (that is, that they can only run under proc-macro context, but I want to export them as functions so this can't be a proc-macro lib) the tests are in a sub-crate that is excluded from `cargo publish`, at `nested-crates-test/using-the-proc/`. You can run the tests by running `cargo test` in that subdirectory.
+
+## AI/LLM Policy
+
+No use of AI or LLMs at all. No contributions involving or using such tools. No contributors who use such tools, even in other projects.
+
+No lead poisoning / brainworms please.
+
