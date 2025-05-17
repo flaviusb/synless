@@ -6,7 +6,7 @@ You make normal data structures to describe a parse with matching and extraction
 
 There are data structures that represent matchers on each of the four TokenTree enum arms, and represent combinators on arbitrary matchers.
 
-There is a `transformation` function that uses these same datastructures to recursively match and transform a TokenStream.
+There is a `transform` function that uses these same datastructures to recursively match and transform a TokenStream.
 
 ## Testing
 
